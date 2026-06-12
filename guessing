@@ -522,8 +522,8 @@ function drawResultPanel() {
 
     let wave = Math.sin(Date.now() * 0.01);
     ctx.font = "24px Arial";
-    ctx.fillText("✨", -155, -80 + wave * 3);
-    ctx.fillText("✨", 155, 120 + wave * 3);
+    ctx.fillText("🍬", -155, -80 + wave * 3);
+    ctx.fillText("🍬", 155, 120 + wave * 3);
     ctx.fillText("🎉", 155, -80 - wave * 3);
     ctx.fillText("🎉", -155, 120 - wave * 3);
 
