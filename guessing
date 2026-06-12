@@ -1,0 +1,812 @@
+// === ROOT + CANVAS ===
+const root = document.createElement("div");
+root.style.position = "fixed";
+root.style.inset = "0";
+root.style.background = "#0b0b10";
+root.style.display = "flex";
+root.style.justifyContent = "center";
+root.style.alignItems = "center";
+root.style.zIndex = "99999";
+document.body.appendChild(root);
+
+const canvas = document.createElement("canvas");
+canvas.width = 900;
+canvas.height = 600;
+root.appendChild(canvas);
+const ctx = canvas.getContext("2d");
+
+// === GAME STATE ===
+let state = "menu";
+let deck = [];
+let firstCard, secondCard, thirdCard;
+let message = "";
+let anim = null;
+let buttons = [];
+let floatingCards = [];
+let deckWobble = 0;
+
+// extras
+let particles = [];
+let shakeX = 0;
+let shakeY = 0;
+let shakeTime = 0;
+let lastFlippedCard = null;
+let popT = 0;
+
+// result panel
+let resultPanelT = 0; // 0 = hidden, 1 = fully shown
+
+// === CARD DATA ===
+const suits = [
+  { symbol: "♠", color: "#000" },
+  { symbol: "♥", color: "#c00" },
+  { symbol: "♦", color: "#c00" },
+  { symbol: "♣", color: "#000" }
+];
+const ranks = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+
+// === BUILD DECK ===
+function buildDeck() {
+  const d = [];
+  for (let s of suits) {
+    for (let r of ranks) {
+      d.push({
+        rank: r,
+        suit: s.symbol,
+        suitColor: s.color,
+        value: ranks.indexOf(r) + 1,
+        joker: false
+      });
+    }
+  }
+  for (let i = 0; i < 2; i++) {
+    d.push({
+      rank: "Joker?",
+      suit: "🃏",
+      suitColor: "#c44",
+      value: 0,
+      joker: true
+    });
+  }
+  return d;
+}
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// === PIP LAYOUTS ===
+const pipLayouts = {
+  "A": [[0,0]],
+  "2": [[0,-1],[0,1]],
+  "3": [[0,-1],[0,0],[0,1]],
+  "4": [[-1,-1],[1,-1],[-1,1],[1,1]],
+  "5": [[-1,-1],[1,-1],[0,0],[-1,1],[1,1]],
+  "6": [[-1,-1],[1,-1],[-1,0],[1,0],[-1,1],[1,1]],
+  "7": [[-1,-1],[1,-1],[-1,0],[1,0],[0,-0.4],[-1,1],[1,1]],
+  "8": [[-1,-1],[1,-1],[-1,0],[1,0],[-1,0.4],[1,0.4],[-1,1],[1,1]],
+  "9": [[-1,-1],[1,-1],[0,-0.7],[-1,0],[1,0],[0,0.3],[-1,1],[1,1],[0,0.8]],
+  "10":[[-1,-1],[1,-1],[0,-0.8],[-1,-0.3],[1,-0.3],[-1,0.3],[1,0.3],[-1,1],[1,1],[0,0.8]]
+};
+
+// === DRAW HELPERS ===
+function drawPixelFrame(x, y, w, h) {
+  ctx.save();
+  ctx.fillStyle = "#111";
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 8);
+  ctx.fill();
+
+  ctx.fillStyle = "#333";
+  ctx.beginPath();
+  ctx.roundRect(x + 2, y + 2, w - 4, h - 4, 6);
+  ctx.fill();
+
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.roundRect(x + 5, y + 5, w - 10, h - 10, 4);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawCardGlow(x, y, w, h) {
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = "#c44";
+  ctx.beginPath();
+  ctx.roundRect(x - 4, y - 4, w + 8, h + 8, 10);
+  ctx.fill();
+  ctx.restore();
+}
+
+// === HIGH-QUALITY SYMMETRICAL COURT CARDS ===
+function drawCourtCardHalf(rank, color) {
+  // Shoulders / Robe Layer
+  ctx.fillStyle = color;
+  ctx.fillRect(10, 28, 48, 16); 
+  
+  // Gold Trim Details on Robe
+  ctx.fillStyle = "#ffd700";
+  ctx.fillRect(18, 28, 32, 4);
+  ctx.fillRect(32, 32, 4, 12);
+
+  // Head / Face Skin
+  ctx.fillStyle = "#f5d7b0";
+  ctx.fillRect(24, 13, 20, 15);
+
+  // Class Specific Hair, Crowns, and Weapons
+  if (rank === "K") {
+    ctx.fillStyle = "#5a3a1a"; 
+    ctx.fillRect(22, 21, 24, 8);
+    ctx.fillStyle = "#f5d7b0"; 
+    ctx.fillRect(26, 21, 16, 2);
+    
+    ctx.fillStyle = "#d4af37";
+    ctx.fillRect(22, 4, 24, 9);
+    ctx.fillRect(22, 0, 4, 4);
+    ctx.fillRect(32, 0, 4, 4);
+    ctx.fillRect(42, 0, 4, 4);
+    
+    ctx.fillStyle = "#c00";
+    ctx.fillRect(26, 7, 2, 2);
+    ctx.fillRect(40, 7, 2, 2);
+
+    ctx.fillStyle = "#aaa";
+    ctx.fillRect(54, 8, 4, 25);
+    ctx.fillStyle = "#ffd700";
+    ctx.fillRect(51, 29, 10, 3);
+  } 
+  else if (rank === "Q") {
+    ctx.fillStyle = "#b5651d";
+    ctx.fillRect(20, 13, 4, 16);
+    ctx.fillRect(44, 13, 4, 16);
+    ctx.fillRect(24, 11, 20, 3);
+
+    ctx.fillStyle = "#ffd700";
+    ctx.fillRect(26, 5, 16, 6);
+    ctx.fillRect(32, 2, 4, 3);
+    ctx.fillStyle = "#00c";
+    ctx.fillRect(33, 6, 2, 2);
+
+    ctx.fillStyle = "#ffd700";
+    ctx.fillRect(54, 16, 3, 20);
+    ctx.fillStyle = "#ff69b4";
+    ctx.fillRect(52, 12, 7, 4);
+  } 
+  else if (rank === "J") {
+    ctx.fillStyle = "#cc0000";
+    ctx.fillRect(22, 5, 24, 8);
+    ctx.fillRect(18, 9, 4, 4);
+    ctx.fillStyle = "#442200";
+    ctx.fillRect(20, 13, 4, 13);
+    ctx.fillRect(44, 13, 4, 13);
+
+    ctx.fillStyle = "#777777";
+    ctx.fillRect(6, 2, 3, 38);
+    ctx.fillStyle = "#cccccc";
+    ctx.fillRect(4, 2, 7, 6);
+  }
+
+  // Eyes
+  ctx.fillStyle = "#000";
+  ctx.fillRect(28, 17, 2, 3);
+  ctx.fillRect(38, 17, 2, 3);
+
+  // Stern Face Line
+  ctx.fillStyle = "#c00";
+  ctx.fillRect(32, 23, 4, 2);
+}
+
+function drawCourtCard(x, y, w, h, rank, color) {
+  ctx.save();
+  ctx.translate(x, y);
+
+  ctx.fillStyle = "#fff8e8";
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = "#d4af37";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(0, 0, w, h);
+  
+  ctx.strokeStyle = "rgba(212, 175, 55, 0.25)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(w, h);
+  ctx.stroke();
+
+  ctx.save();
+  drawCourtCardHalf(rank, color);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(w, h);
+  ctx.scale(-1, -1);
+  drawCourtCardHalf(rank, color);
+  ctx.restore();
+
+  ctx.restore();
+}
+
+// === 8-BIT CARD BACK ===
+function drawCardBack(x, y) {
+  drawCardGlow(x, y, 120, 180);
+  drawPixelFrame(x, y, 120, 180);
+
+  ctx.save();
+  ctx.translate(x, y);
+
+  ctx.fillStyle = "#7a0000";
+  ctx.beginPath();
+  ctx.roundRect(10, 10, 100, 160, 4);
+  ctx.fill();
+
+  ctx.fillStyle = "#fff";
+  for (let yy = 20; yy < 160; yy += 18) {
+    for (let xx = 20; xx < 100; xx += 18) {
+      ctx.fillRect(xx, yy, 4, 4);
+      ctx.fillRect(xx + 3, yy + 3, 4, 4);
+    }
+  }
+
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(10, 10, 100, 160);
+
+  ctx.restore();
+}
+
+// === 8-BIT JOKER ===
+function drawJokerArt() {
+  ctx.save();
+  ctx.fillStyle = "#f5d7b0";
+  ctx.fillRect(40, 40, 40, 40);
+
+  ctx.fillStyle = "#000";
+  ctx.fillRect(50, 55, 6, 6);
+  ctx.fillRect(64, 55, 6, 6);
+
+  ctx.fillStyle = "#c00";
+  ctx.fillRect(52, 70, 20, 4);
+
+  ctx.fillStyle = "#d00";
+  ctx.fillRect(38, 30, 44, 10);
+
+  ctx.fillStyle = "#ff0";
+  ctx.fillRect(46, 22, 28, 8);
+  ctx.fillRect(36, 30, 6, 6);
+  ctx.fillRect(82, 30, 6, 6);
+  ctx.restore();
+}
+
+// === CARD FRONT ===
+function drawCardFront(card, x, y, sx) {
+  ctx.save();
+  ctx.translate(x + 60, y + 90);
+  ctx.scale(sx, 1);
+  ctx.translate(-60, -90);
+
+  drawCardGlow(0, 0, 120, 180);
+  drawPixelFrame(0, 0, 120, 180);
+
+  if (card.joker) {
+    ctx.fillStyle = "#660000";
+    ctx.fillRect(10, 10, 100, 160);
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(10, 10, 100, 160);
+
+    drawJokerArt();
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "20px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("Joker?", 60, 150);
+    ctx.restore();
+    return;
+  }
+
+  ctx.fillStyle = card.suitColor;
+  ctx.font = "18px Arial";
+  
+  // Left Corners
+  ctx.textAlign = "left";
+  ctx.fillText(card.rank, 12, 24);
+  ctx.fillText(card.suit, 12, 42);
+  
+  // Right Corners
+  ctx.textAlign = "right";
+  ctx.fillText(card.rank, 108, 24);
+  ctx.fillText(card.suit, 108, 42);
+  
+  ctx.textAlign = "center";
+
+  if (["J", "Q", "K"].includes(card.rank)) {
+    drawCourtCard(26, 46, 68, 88, card.rank, card.suitColor);
+  } else if (card.rank === "A") {
+    ctx.save();
+    ctx.fillStyle = "#fff8e8";
+    ctx.fillRect(26, 46, 68, 88);
+    ctx.strokeStyle = card.suitColor;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(26, 46, 68, 88);
+
+    ctx.fillStyle = card.suitColor;
+    ctx.font = "48px Arial";
+    ctx.fillText(card.suit, 60, 95);
+    ctx.font = "14px Arial";
+    ctx.fillText("ACE", 60, 123);
+    ctx.restore();
+  } else {
+    const layout = pipLayouts[card.rank];
+    ctx.font = "22px Arial";
+    ctx.fillStyle = card.suitColor;
+    for (let [px, py] of layout) {
+      ctx.fillText(card.suit, 60 + px * 26, 96 + py * 36);
+    }
+  }
+
+  ctx.restore();
+}
+
+// === CARD RENDERER ===
+function drawCard(card, x, y, t) {
+  const flip = Math.cos(t * Math.PI);
+  let scaleX = flip;
+  if (card === lastFlippedCard && popT > 0) {
+    scaleX *= 1 + 0.12 * Math.sin(popT * Math.PI);
+  }
+
+  if (t < 0.5) {
+    ctx.save();
+    ctx.translate(x + 60, y + 90);
+    ctx.scale(Math.abs(scaleX), 1);
+    ctx.translate(-60, -90);
+    drawCardBack(0, 0);
+    ctx.restore();
+  } else {
+    drawCardFront(card, x, y, Math.abs(scaleX));
+  }
+}
+
+// === DECK STACK ===
+function drawDeckStack(count) {
+  deckWobble += 0.08;
+  const wob = Math.sin(deckWobble) * 3;
+
+  for (let i = 0; i < Math.min(count, 20); i++) {
+    const offset = i * 2;
+    const x = 80 + offset + wob;
+    const y = 80 + offset;
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.fillRect(x + 4, y + 6, 120, 180);
+    drawCardBack(x, y);
+  }
+}
+
+// === BUTTONS ===
+canvas.addEventListener("click", e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  for (let b of buttons) {
+    if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+      b.onClick();
+      break;
+    }
+  }
+});
+
+function addButton(text, x, y, w, h, onClick) {
+  buttons.push({ text, x, y, w, h, onClick });
+}
+
+function clearButtons() {
+  buttons = [];
+}
+
+function drawButton(b) {
+  const x = b.x, y = b.y, w = b.w, h = b.h;
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  ctx.beginPath();
+  ctx.roundRect(x + 3, y + 4, w, h, 6);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffb347";
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 6);
+  ctx.fill();
+  
+  ctx.fillStyle = "#ffd28a";
+  ctx.beginPath();
+  ctx.roundRect(x + 3, y + 3, w - 6, h - 6, 4);
+  ctx.fill();
+
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+
+  ctx.fillStyle = "#000";
+  ctx.font = "18px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(b.text, x + w / 2, y + h / 2 + 6);
+  ctx.restore();
+}
+
+// === ANIMATION ENGINE ===
+function animateFlipFromDeck(card, toX, toY, done) {
+  anim = {
+    card,
+    t: 0,
+    fromX: 80,
+    fromY: 80,
+    toX,
+    toY,
+    done
+  };
+  lastFlippedCard = card;
+  popT = 0;
+}
+
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+// === PARTICLES / CRT / SHAKE ===
+function spawnParticles() {
+  particles = [];
+  for (let i = 0; i < 50; i++) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      dx: (Math.random() - 0.5) * 0.25,
+      dy: (Math.random() - 0.5) * 0.25,
+      alpha: 0.15 + Math.random() * 0.3,
+      size: 1 + Math.random() * 2
+    });
+  }
+}
+
+function updateParticles() {
+  particles.forEach(p => {
+    p.x += p.dx;
+    p.y += p.dy;
+    if (p.x < 0) p.x = canvas.width;
+    if (p.x > canvas.width) p.x = 0;
+    if (p.y < 0) p.y = canvas.height;
+    if (p.y > canvas.height) p.y = 0;
+  });
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+}
+
+// === PREMIUM RESULTS PANEL SYSTEM ===
+function drawResultPanel() {
+  if (state !== "result") return;
+
+  resultPanelT += (1 - resultPanelT) * 0.12;
+  const alpha = resultPanelT * 0.95;
+  const scale = 1 + 0.04 * Math.sin(resultPanelT * Math.PI);
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.scale(scale, scale);
+
+  const isWin = message.includes("Lucky");
+  const isJoker = message.includes("Joker?");
+
+  if (isWin) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(-225, -145, 450, 385);
+
+    ctx.fillStyle = "#ffd700"; 
+    ctx.fillRect(-220, -140, 440, 370);
+    ctx.fillStyle = "#b58900"; 
+    ctx.fillRect(-214, -134, 428, 358);
+    ctx.fillStyle = "#fff194"; 
+    ctx.fillRect(-208, -128, 416, 346);
+    ctx.fillStyle = "#161102"; 
+    ctx.fillRect(-202, -122, 404, 334);
+
+    let wave = Math.sin(Date.now() * 0.01);
+    ctx.font = "24px Arial";
+    ctx.fillText("✨", -155, -80 + wave * 3);
+    ctx.fillText("✨", 155, 120 + wave * 3);
+    ctx.fillText("🎉", 155, -80 - wave * 3);
+    ctx.fillText("🎉", -155, 120 - wave * 3);
+
+    ctx.font = "bold 46px Arial";
+    ctx.fillStyle = "#ffd700";
+    ctx.textAlign = "center";
+    ctx.fillText("VICTORY!", 0, -35);
+
+    ctx.font = "18px Arial";
+    ctx.fillStyle = "#fff";
+    ctx.fillText("You won? I guess you win some candy :)!", 0, 15);
+  } 
+  else if (isJoker) {
+    ctx.fillStyle = "rgba(0,0,0,0.65)";
+    ctx.fillRect(-225, -145, 450, 385);
+
+    let cycle = Math.floor(Date.now() / 150) % 2 === 0;
+    ctx.fillStyle = cycle ? "#9400d3" : "#32cd32";
+    ctx.fillRect(-220, -140, 440, 370);
+    ctx.fillStyle = cycle ? "#32cd32" : "#9400d3";
+    ctx.fillRect(-212, -132, 424, 354);
+    ctx.fillStyle = "#0a0112"; 
+    ctx.fillRect(-204, -124, 408, 338);
+
+    ctx.fillStyle = "rgba(148, 0, 211, 0.2)";
+    ctx.font = "bold 14px Courier New";
+    ctx.fillText("HA HA HA (you suck) HA HA HA HA", 0, -85);
+    ctx.fillText("HA HA HA HA HA HA HA HA HA", 0, 140);
+
+    let jitX = (Math.random() - 0.5) * 5;
+    let jitY = (Math.random() - 0.5) * 5;
+    ctx.font = "bold 38px Arial";
+    ctx.fillStyle = "#ff2222";
+    ctx.textAlign = "center";
+    ctx.fillText("Joker! 🃏", jitX, -30 + jitY);
+
+    ctx.font = "16px Arial";
+    ctx.fillStyle = "#ffa3a3";
+    ctx.fillText("Joker=Bad", 0, 18);
+  } 
+  else {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(-225, -145, 450, 385);
+
+    ctx.fillStyle = "#550000"; 
+    ctx.fillRect(-220, -140, 440, 370);
+    ctx.fillStyle = "#8a1a1a"; 
+    ctx.fillRect(-214, -134, 428, 358);
+    ctx.fillStyle = "#1e0303"; 
+    ctx.fillRect(-204, -124, 408, 338);
+
+    ctx.font = "bold 44px Arial";
+    ctx.fillStyle = "#ff4444";
+    ctx.textAlign = "center";
+    ctx.fillText("DEFEAT", 0, -35);
+
+    ctx.font = "18px Arial";
+    ctx.fillStyle = "#b5b5b5";
+    ctx.fillText("I think you guessed wrong.", 0, 15);
+  }
+
+  ctx.restore();
+}
+
+// === GAME FLOW ===
+function toMenu() {
+  state = "menu";
+  clearButtons();
+  message = "";
+  floatingCards = [];
+  spawnParticles();
+  resultPanelT = 0;
+
+  addButton("Start Game", 360, 320, 180, 60, () => startGame());
+
+  for (let i = 0; i < 6; i++) {
+    floatingCards.push({
+      x: Math.random() * 900,
+      y: Math.random() * 600,
+      speed: 0.3 + Math.random() * 0.4,
+      card: {
+        rank: ranks[Math.floor(Math.random() * ranks.length)],
+        suit: suits[Math.floor(Math.random() * 4)].symbol,
+        suitColor: suits[Math.floor(Math.random() * 4)].color,
+        joker: false
+      }
+    });
+  }
+}
+
+function startGame() {
+  deck = shuffle(buildDeck());
+  firstCard = secondCard = thirdCard = null;
+  state = "game";
+  message = "Stage 1: Guess the color of the next card.";
+  clearButtons();
+  resultPanelT = 0;
+  addButton("Red", 550, 420, 120, 40, () => handleColorGuess("red"));
+  addButton("Black", 550, 470, 120, 40, () => handleColorGuess("black"));
+}
+
+function handleColorGuess(guess) {
+  firstCard = deck.pop();
+  animateFlipFromDeck(firstCard, 260, 200, () => {
+    popT = 1;
+    if (firstCard.joker) {
+      triggerShake(8, 18);
+      return endGame(false, true);
+    }
+    const actualColor = (firstCard.suit === "♥" || firstCard.suit === "♦") ? "red" : "black";
+    if (guess !== actualColor) {
+      triggerShake(6, 14);
+      return endGame(false, false);
+    }
+    message = "Stage 2: Higher or lower?";
+    clearButtons();
+    addButton("Higher", 550, 420, 120, 40, () => handleHLGuess("Higher"));
+    addButton("Lower", 550, 470, 120, 40, () => handleHLGuess("Lower"));
+  });
+}
+
+function handleHLGuess(guess) {
+  secondCard = deck.pop();
+  animateFlipFromDeck(secondCard, 420, 200, () => {
+    popT = 1;
+    if (secondCard.joker) {
+      triggerShake(8, 18);
+      return endGame(false, true);
+    }
+    const v1 = firstCard.value;
+    const v2 = secondCard.value;
+    const correct =
+      (v2 > v1 && guess === "Higher") ||
+      (v2 < v1 && guess === "Lower");
+    if (!correct) {
+      triggerShake(6, 14);
+      return endGame(false, false);
+    }
+    message = "Stage 3: Guess the suit.";
+    clearButtons();
+    addButton("♠", 520, 400, 60, 40, () => handleSuitGuess("♠"));
+    addButton("♥", 590, 400, 60, 40, () => handleSuitGuess("♥"));
+    addButton("♦", 520, 450, 60, 40, () => handleSuitGuess("♦"));
+    addButton("♣", 590, 450, 60, 40, () => handleSuitGuess("♣"));
+  });
+}
+
+function handleSuitGuess(suit) {
+  thirdCard = deck.pop();
+  animateFlipFromDeck(thirdCard, 580, 200, () => {
+    popT = 1;
+    if (thirdCard.joker) {
+      triggerShake(8, 18);
+      return endGame(false, true);
+    }
+    const win = thirdCard.suit === suit;
+    if (win) triggerShake(5, 12);
+    else triggerShake(6, 14);
+    endGame(win, false);
+  });
+}
+
+function endGame(win, joker = false) {
+  state = "result";
+  if (joker) {
+    message = "Joker?";
+  } else {
+    message = win ? "Lucky" : "I think you lost...";
+  }
+  resultPanelT = 0;
+  clearButtons();
+  addButton("Play Again", 520, 420, 140, 40, () => startGame());
+  addButton("Main Menu", 520, 470, 140, 40, () => toMenu());
+}
+
+// === RENDER LOOP ===
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const grad = ctx.createLinearGradient(0, 0, 0, 600);
+  grad.addColorStop(0, "#141428");
+  grad.addColorStop(1, "#050509");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const radial = ctx.createRadialGradient(
+    canvas.width / 2, canvas.height / 2, 80,
+    canvas.width / 2, canvas.height / 2, 500
+  );
+  radial.addColorStop(0, "rgba(0,0,0,0)");
+  radial.addColorStop(1, "rgba(0,0,0,0.7)");
+  ctx.fillStyle = radial;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  updateParticles();
+  drawParticles();
+
+  if (shakeTime > 0) {
+    shakeTime--;
+    shakeX = (Math.random() - 0.5) * 8;
+    shakeY = (Math.random() - 0.5) * 8;
+  } else {
+    shakeX = shakeY = 0;
+  }
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  if (state === "menu") {
+    floatingCards.forEach(fc => {
+      fc.y += fc.speed;
+      if (fc.y > 650) fc.y = -200;
+      if (fc.y < 150 || fc.y > 300) drawCard(fc.card, fc.x, fc.y, 1);
+    });
+
+    ctx.fillStyle = "#c44";
+    ctx.font = "48px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("Guess For Sweeeeets!", canvas.width / 2, 200);
+
+    ctx.font = "18px Arial";
+    ctx.fillText("Made By Jael & Frank :)", canvas.width / 2, 240);
+
+    ctx.font = "14px Arial";
+    ctx.fillText("(A not so easy guessing game...)", canvas.width / 2, 260);
+    ctx.fillText("Aces equal to 1 btw...", canvas.width / 2, 280);
+
+    ctx.font = "10px Arial";
+    ctx.fillText("Just putting random text so it doesn’t look boring 🥲", canvas.width / 2, 300);
+  }
+
+  if (state === "game" || state === "result") {
+    drawDeckStack(deck.length);
+
+    if (firstCard && (!anim || anim.card !== firstCard)) drawCard(firstCard, 260, 200, 1);
+    if (secondCard && (!anim || anim.card !== secondCard)) drawCard(secondCard, 420, 200, 1);
+    if (thirdCard && (!anim || anim.card !== thirdCard)) drawCard(thirdCard, 580, 200, 1);
+
+    if (anim) {
+      anim.t += 0.05;
+      const rawT = Math.min(anim.t, 1);
+      const eased = easeOutCubic(rawT);
+
+      const x = anim.fromX + (anim.toX - anim.fromX) * eased;
+      const y = anim.fromY + (anim.toY - anim.fromY) * eased;
+
+      drawCard(anim.card, x, y, rawT);
+
+      if (rawT >= 1) {
+        const done = anim.done;
+        anim = null;
+        popT = 1;
+        done && done();
+      }
+    }
+
+    if (popT > 0) {
+      popT -= 0.05;
+      if (popT < 0) popT = 0;
+    }
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "20px Arial";
+    ctx.textAlign = "left";
+    ctx.fillText(message, 40, 540);
+  }
+
+  drawResultPanel();
+
+  for (let b of buttons) drawButton(b);
+
+  ctx.restore();
+
+  // CRT Scanlines
+  ctx.globalAlpha = 0.12;
+  ctx.fillStyle = "#000";
+  for (let y = 0; y < canvas.height; y += 4) {
+    ctx.fillRect(0, y, canvas.width, 2);
+  }
+  ctx.globalAlpha = 1;
+
+  requestAnimationFrame(render);
+}
+
+toMenu();
+render();
