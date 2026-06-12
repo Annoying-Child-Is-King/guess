@@ -745,14 +745,14 @@ function render() {
     ctx.fillText("Guess For Sweeeeets!", canvas.width / 2, 200);
 
     ctx.font = "18px Arial";
-    ctx.fillText("Made By Jael & Frank :)", canvas.width / 2, 240);
+    ctx.fillText("Made By Jael :)", canvas.width / 2, 240);
 
     ctx.font = "14px Arial";
     ctx.fillText("(A not so easy guessing game...)", canvas.width / 2, 260);
-    ctx.fillText("Aces equal to 1 btw...", canvas.width / 2, 280);
+    ctx.fillText("Aces equal 1 btw...", canvas.width / 2, 280);
 
-    ctx.font = "10px Arial";
-    ctx.fillText("Just putting random text so it doesn’t look boring 🥲", canvas.width / 2, 300);
+    ctx.font = "12px Arial";
+    ctx.fillText("Thank you Ms. Gluz :D", canvas.width / 2, 300);
   }
 
   if (state === "game" || state === "result") {
