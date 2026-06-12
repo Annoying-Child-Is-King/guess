@@ -638,7 +638,7 @@ function handleColorGuess(guess) {
       triggerShake(6, 14);
       return endGame(false, false);
     }
-    message = "Stage 2: Higher or lower?";
+    message = "Stage 2: Is the next card gonna be higher or lower?";
     clearButtons();
     addButton("Higher", 550, 420, 120, 40, () => handleHLGuess("Higher"));
     addButton("Lower", 550, 470, 120, 40, () => handleHLGuess("Lower"));
